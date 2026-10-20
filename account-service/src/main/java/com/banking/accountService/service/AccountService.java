@@ -13,8 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
-import java.util.List;
-import java.util.stream.Collectors;
+import java.util.*;
 
 @Service
 @Slf4j
@@ -54,26 +53,66 @@ public class AccountService {
 
 
 
+    /*
+    *  Block Account - Called by Fraud Detection service via kafka
+    * */
 
-
-
-
-
-    @Transactional(readOnly = true)
-    public AccountResponse getAccountById(Long id) {
-        Account account = accountRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Account not found with id: " + id));
-        return mapToResponse(account);
+    public void blockAccount(String accountNumber){
+        log.info("Blocking account: {}", accountNumber);
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new RuntimeException("Account not found "));
+        account.setStatus(AccountStatus.BLOCKED);
+        accountRepository.save(account);
+        log.info("Account blocked: {}", accountNumber);
     }
 
-    @Transactional(readOnly = true)
-    public List<AccountResponse> getAllAccounts() {
-        return accountRepository.findAll()
-                .stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+
+
+
+    // Credit balance
+    //called by transaction service via kafka
+    public void creditBalance(String accountNumber, BigDecimal amount) {
+        log.info("Crediting {} to account: {}" , amount , accountNumber);
+
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new RuntimeException("Account not found "));
+
+        account.setBalance(account.getBalance().add(amount));
+        accountRepository.save(account);
+
+        log.info("Balance credited. New Balance: {}",account.getBalance());
+
+
     }
 
+
+
+
+    // Deduct balance
+    //called by transaction service via kafka
+    public void deductBalance(String accountNumber , BigDecimal amount){
+        log.info("Deducting balance {} from account: {}", amount, accountNumber);
+
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new RuntimeException("Account not found "));
+
+        if(account.getStatus() != AccountStatus.ACTIVE){
+            throw new RuntimeException("Account is not active" + accountNumber);
+        }
+
+        if(account.getBalance().compareTo(amount) < 0){
+            throw new RuntimeException("Insufficient funds for account" + accountNumber);
+        }
+
+        account.setBalance(account.getBalance().subtract(amount));
+        accountRepository.save(account);
+
+        log.info("Balance updated . New Balance: {}",account.getBalance());
+    }
+
+
+
+    //Generate unique 12 digit account number
     private String generateAccountNumber() {
         String accountNumber;
         do {
@@ -84,6 +123,25 @@ public class AccountService {
         } while (accountRepository.existsByAccountNumber(accountNumber));
 
         return accountNumber;
+    }
+
+
+    public AccountResponse getAccount(String accountNumber) {
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new RuntimeException("Account not found "));
+        return mapToResponse(account);
+    }
+
+
+    /*
+    *
+    * */
+
+
+    public BigDecimal getBalance(String accountNumber) {
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new RuntimeException("Account not found "));
+        return account.getBalance();
     }
 
 
@@ -106,4 +164,5 @@ public class AccountService {
         response.setCreatedAt(account.getCreatedAt());
         return response;
     }
+
 }
