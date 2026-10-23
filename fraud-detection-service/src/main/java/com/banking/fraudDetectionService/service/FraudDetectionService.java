@@ -30,6 +30,10 @@ public class FraudDetectionService {
     @Value("{fraud.suspicious-amount-multiplier}")
     private double suspiciousAmountMultiplier;
 
+    @Value("${fraud.max-balance-percentage}")
+    private double maxBalancePercentage;
+
+
     private static final String VERIFICATION_REQUIRED_TOPIC = "verification.required";
     private static final String FRAUD_CHECK_CLEAN_RESULT_TOPIC = "fraud.check.clean";
 
@@ -131,4 +135,16 @@ public class FraudDetectionService {
 
         return amount.compareTo(threshold) > 0 ;
     }
+
+
+
+    private boolean isBalanceCheckFailed(BigDecimal senderBalance, BigDecimal amount){
+
+        BigDecimal maxAllowed = senderBalance.multiply(
+                BigDecimal.valueOf(maxBalancePercentage));
+        log.info("Balance check - amount: {} maxAllowed: {} suscpious: {}", amount, maxAllowed, amount.compareTo(maxAllowed) > 0);
+
+        return amount.compareTo(maxAllowed) > 0 ;
+    }
+
 }
